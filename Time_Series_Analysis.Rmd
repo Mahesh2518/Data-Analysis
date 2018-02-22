@@ -1,0 +1,54 @@
+---
+title: "Time Series"
+author: "Mahesh"
+date: "21 February 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Time Series
+```{r}
+library(tseries)
+library(fpp)
+library(forecast)
+data("AirPassengers")
+class(AirPassengers)
+#This is the start of the time series
+start(AirPassengers)
+end(AirPassengers)
+#This is the end of the time series
+frequency(AirPassengers)
+summary(AirPassengers)
+cycle(AirPassengers)
+#The number of passengers are distributed across the spectrum
+plot(AirPassengers)
+AirPassengers
+abline(reg=lm(AirPassengers~time(AirPassengers)))
+plot(aggregate(AirPassengers,FUN=mean)) ##generaltrend
+boxplot(AirPassengers~cycle(AirPassengers)) ##seasonality
+plot(log(AirPassengers)) ##making variance equal
+plot(diff(log(AirPassengers))) ## making mean constant
+## AR I MA
+acf(AirPassengers) ##autocorrelation method
+acf(diff(log(AirPassengers))) ## determining the q
+pacf(diff(log(AirPassengers))) ## determining value of p
+plot(diff(log(AirPassengers)))
+## fit an ARIMA model and predict the future 10 years
+fit= arima(log(AirPassengers),c(0,1,1),seasonal = list(order=c(0,1,1),period=12))
+pred=predict(fit,n.ahead = 2*12) ## predecting the model
+pred1=2.718^pred$pred # to remove log
+ts.plot(AirPassengers,2.718^pred$pred,log="y",lty=c(1,3))
+## testing our model
+datawide=ts(AirPassengers,frequency = 12,start = c(1949,1),end = c(1959,12))
+fit= arima(log(AirPassengers),c(0,1,1),seasonal = list(order=c(0,1,1),period=12))
+pred=predict(fit,n.ahead = 2*12) ## predecting the model
+pred1=2.718^pred$pred # to remove log
+data1=head(pred1,12)
+pred_1960=round(data1,digits=0)
+ori_1960=tail(AirPassengers,12)
+ts.plot(AirPassengers,2.718^pred$pred,log="y",lty=c(1,3))
+```
+

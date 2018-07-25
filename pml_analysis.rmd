@@ -1,0 +1,475 @@
+---
+title: "PML_Analysis"
+author: "Mahesh"
+date: "27 April 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE)
+```
+
+## Importing Libraries
+```{r,echo=TRUE,warning=FALSE}
+library(rpart)
+library(ggplot2)
+library(data.table)
+library(dplyr)
+library(Boruta)
+library(mice)
+library(h2o)
+library(rpart)
+```
+
+## Reading Data and checking its dimensions
+## Replacing all Blanks,"#DIV/0!" with "NA"
+
+```{r,echo=TRUE,warning=FALSE}
+plm_data=read.csv("D:/T_Project/Datasets/pml-training.csv",header = T,na.strings = c("","NA","#DIV/0!"))
+dim(plm_data)
+```
+
+## Statistical Info of the data
+```{r,echo=TRUE,warning=FALSE}
+str(plm_data)
+```
+
+##Checking for % of "NA" Values 
+```{r,echo=TRUE,warning=FALSE}
+c= nrow(plm_data)
+nulls=colSums((is.na(plm_data))/c)*100
+nulls
+```
+
+##Removing those features with null values as those columns are having more than 80% of "NA" values.
+
+```{r,echo= TRUE,warning=FALSE}
+new_plm_data=plm_data[,colSums(is.na(plm_data)) == 0]
+dim(new_plm_data)
+str(new_plm_data)
+colnames(new_plm_data)
+```
+## Descriptive Statistics
+```{r,echo= TRUE,warning=FALSE}
+summary(new_plm_data)
+```
+
+
+## Installing "XDA" Package for Exploratory Data Analysis
+```{r,echo=TRUE,warning=FALSE}
+##install.packages("githubinstall")
+##library(githubinstall)
+##githubinstall("xda")
+library(xda)
+```
+
+## To view the comprehensive summary for all character columns in the new_plm_data dataset
+```{r,echo=TRUE,warning=FALSE}
+charSummary(new_plm_data)
+```
+
+## To view the comprehensive summary for all numeric columns in the new_plm_data dataset
+```{r,echo=TRUE,warning=FALSE}
+numSummary(new_plm_data)
+```
+
+
+## Creating NA's
+
+```{r}
+NA_new_plm_data=new_plm_data
+nrow(NA_new_plm_data)
+samp=sample(1:19622,500,replace = T)
+u_samp=unique(samp)
+NA_new_plm_data[u_samp,55]=NA
+NA_new_plm_data[u_samp,23]=NA
+NA_new_plm_data[u_samp,19]=NA
+```
+
+## Checking the % of Created Nulls 
+```{r}
+nc= nrow(NA_new_plm_data)
+columns_null=colSums((is.na(NA_new_plm_data))/nc)*100
+columns_null
+```
+
+##Imputing NA values using mice package
+
+
+## Info about the missing values pattern in the dataset
+```{r}
+library(mice)
+md.pattern(NA_new_plm_data) 
+```
+
+## Visual representation of NA Values using library VIM
+
+```{r}
+library(VIM)
+v_na_plot=aggr(NA_new_plm_data, col=c('navyblue','yellow'), numbers=TRUE, sortVars=TRUE, labels=names(data), cex.axis=0.7, gap=10, ylab=c("Histogram of missing data","Pattern"))
+```
+
+## Imputing NA values with mice package with method as "Mean"
+```{r}
+imputed_pml=mice(NA_new_plm_data,m=5,maxit=10,meth='mean',seed=523)
+final_imputed=complete(imputed_pml,1)
+
+ni= nrow(final_imputed)
+i_columns_null=colSums((is.na(final_imputed))/nc)*100
+i_columns_null
+
+```
+## Visual representation of "NA" after imputing
+```{r}
+v_imputed_plot=aggr(final_imputed, col=c('navyblue','yellow'), numbers=TRUE, sortVars=TRUE, labels=names(final_imputed), cex.axis=0.7, gap=10, ylab=c("Histogram of missing data","Pattern"))
+
+str(new_plm_data)
+```
+
+
+
+
+## UNIVARIATE ANALYSIS
+
+
+## SELECTING NUMERIC COLUMNS AND CHANGING THIER DATA TYPES
+```{r,echo=TRUE,warning=FALSE}
+hist_data=new_plm_data[-c(1,2,3,4,5,6)]
+hist_data$classe= factor(hist_data$classe,label = c(1,2,3,4,5),levels  = c("A","B","C","D","E"))
+hist_data$classe=as.character(hist_data$classe)
+hist_data$classe=as.numeric(hist_data$classe)
+```
+
+## Data Distribution using Histogram for all columns
+```{r,echo=TRUE,warning=FALSE}
+for (col in 2:ncol(hist_data)) {
+  n=names(hist_data)
+    rb=hist( hist_data[,col],xlab = n[col],ylab='Frequency',col='green')
+}
+```
+
+
+
+## Finding outliers for each column using boxplot
+```{r,echo=TRUE,warning=FALSE}
+for (col in 2:ncol(hist_data)) {
+  n=names(hist_data)
+    bb=boxplot( hist_data[,col],xlab = n[col],ylab='count',col='royalblue2',las=2,main='boxplot')
+}
+```
+
+## Exact Numerical values of Outliers
+```{r}
+library(outliers)
+i=1
+a=c()
+count=ncol(hist_data)
+while (i<=count) {
+  a=append(a,outlier(hist_data[i]))
+  i=i+1
+}
+outlier_list=data.frame(a)
+outlier_list
+```
+
+## BIVARIATE ANALYSIS
+
+
+## Bivariate Analysis between continous vs discrete features
+```{r}
+con=c(8,9,10,12,13,14,22,25,26,27,34,35,36,38,39,40,51,52,60)
+cd=new_plm_data[,con]
+cd1=names(cd[-19])
+for(i in cd1){
+   print(ggplot(cd,aes(x=classe,y=cd[i]))+geom_boxplot(color='royalblue')+xlab("classe")+ylab(cd[i]) +theme_bw())
+}
+```
+
+
+## Bivariate Analysis using UDF
+```{r}
+barplotFunc=function(x, na.rm = TRUE) {
+  nm <- names(x)
+  for (i in seq_along(nm)) {
+print(ggplot(x,aes_string(x=nm[length(nm)],y=nm[i])) + geom_bar(color='royalblue',stat="identity")) }
+}
+barplotFunc(hist_data)
+```
+
+## Bivariate Analysis between discrete vs discrete features
+
+## Classe vs USer_name
+```{r}
+ggplot(new_plm_data,aes(x=classe,y=user_name))+geom_histogram(stat='identity',color='goldenrod2')+labs(title="Classe Vs user_name")
+```
+
+
+## Classe vs New_window
+```{r}
+ggplot(new_plm_data,aes(x=classe,y=new_window))+geom_histogram(stat='identity',color='goldenrod2')+labs(title="Classe Vs new_window")
+```
+
+
+## Bivariate Analysis between continuos vs continuos 
+```{r}
+con1=c(8,9,10,12,13,14,22,25,26,27,34,35,36,38,39,40,51,52)
+continuos_data=new_plm_data[,con1]
+
+## Scatter plot between roll_belt vs pitch_belt
+
+ggplot(continuos_data,aes(pitch_belt,roll_belt))+geom_jitter(stat = "identity")
+
+## Scatter plot between yaw_dumbbell vs gyros_dumbbell_x
+ggplot(continuos_data,aes(yaw_dumbbell,gyros_dumbbell_x))+geom_jitter(stat = "identity")
+
+## Scatter plot between gyros_belt_x vs gyros_belt_y
+ggplot(continuos_data,aes(gyros_belt_x,gyros_belt_y))+geom_jitter(stat = "identity")
+
+## Scatter plot between gyros_arm_x vs gyros_arm_y
+ggplot(continuos_data,aes(gyros_arm_x,gyros_arm_y))+geom_jitter(stat = "identity")
+ 
+ 
+## Scatter plot between roll_dumbbell vs pitch_dumbbell
+ggplot(continuos_data,aes(pitch_dumbbell,roll_dumbbell))+geom_jitter(stat = "identity")
+
+```
+
+
+
+
+## Correlation among all the features of the dataset
+```{r}
+str(hist_data)
+h_d=cor(hist_data)
+h_d=round(h_d,2)
+library(corrplot)
+corrplot(h_d,method = 'color',type = "lower")
+
+```
+
+
+## Segregation of data among trian and test
+```{r,echo=TRUE,warning=FALSE}
+sample_index= sample.int(n=nrow(new_plm_data),size = floor(0.7*nrow(new_plm_data)),replace = F)
+plm_train=new_plm_data[sample_index,]
+dim(plm_train)
+plm_test=new_plm_data[-sample_index,]
+dim(plm_test)
+```
+
+
+
+## Classification using Logistic Regression(Multinomial Logistic Regression)
+
+```{r}
+library(nnet)
+library(caret)
+View(plm_test)
+multinom_model=multinom(classe~.,data = plm_train)
+predict_prob=predict(multinom_model,newdata = plm_test[,-60],"probs")
+predict_labels=predict(multinom_model,newdata = plm_test[,-60])
+tab_m=table(predict_labels,plm_test$classe)
+confusionMatrix(tab_m)
+MLR_Accuracy=sum(diag(tab_m))/sum(tab_m)*100
+MLR_Accuracy
+```
+
+
+## Classification using RPART
+```{r,echo=TRUE,warning=FALSE}
+plm_test_wl=plm_test[,-60]
+rp_model=rpart(classe~.,data = plm_train,method="class")
+rp_prune=prune(rp_model,cp=0.25)
+pred=predict(rp_prune,plm_test_wl,type = 'class')
+model_pred=table(pred,plm_test$classe)
+accuracy=sum(diag(model_pred))/sum(model_pred)
+accuracy
+```
+## k-fold CV (RPART)
+```{r}
+
+library(caret)
+
+train_control <- trainControl(method="cv", number=10)
+model <- train(classe~., data=plm_train, trControl=train_control, method="rpart")
+print(model)
+pre=predict(model,plm_test[-60])
+c_tab=table(pre,plm_test$classe)
+accuracy_kfcv=sum(diag(c_tab))/sum(c_tab)
+accuracy_kfcv
+```
+## KFCV (SVm)
+```{r}
+library(caret)
+
+train_control <- trainControl(method="cv", number=10)
+model <- train(classe~., data=plm_train, trControl=train_control, method="rpart")
+print(model)
+pre=predict(model,plm_test[-60])
+c_tab=table(pre,plm_test$classe)
+accuracy_kfcv=sum(diag(c_tab))/sum(c_tab)
+accuracy_kfcv
+```
+
+
+## Classification using kNN
+
+```{r,echo=TRUE,warning=FALSE}
+library(class)
+
+
+k_plm_train=new_plm_data[sample_index,-60]
+k_plm_train=k_plm_train[,-5]
+k_plm_train$user_name=factor(k_plm_train$user_name,label =c(1,2,3,4,5,6),levels = c("adelmo","carlitos","charles","eurico","jeremy","pedro"))
+k_plm_train$user_name=as.character(k_plm_train$user_name)
+k_plm_train$user_name=as.numeric(k_plm_train$user_name)
+
+k_plm_train$new_window=factor(k_plm_train$new_window,label =c(1,0),levels = c("yes","no"))
+k_plm_train$new_window=as.character(k_plm_train$new_window)
+k_plm_train$new_window=as.numeric(k_plm_train$new_window)
+
+
+
+k_plm_test=new_plm_data[-sample_index,-60]
+k_plm_test=k_plm_test[,-5]
+k_plm_test$user_name=factor(k_plm_test$user_name,label =c(1,2,3,4,5,6),levels = c("adelmo","carlitos","charles","eurico","jeremy","pedro"))
+k_plm_test$user_name=as.character(k_plm_test$user_name)
+k_plm_test$user_name=as.numeric(k_plm_test$user_name)
+
+k_plm_test$new_window=factor(k_plm_test$new_window,label =c(1,0),levels = c("yes","no"))
+k_plm_test$new_window=as.character(k_plm_test$new_window)
+k_plm_test$new_window=as.numeric(k_plm_test$new_window)
+
+
+cl=new_plm_data[sample_index,60]
+c_test_lab=new_plm_data[-sample_index,60]
+
+m=kNN_model=knn(k_plm_train,k_plm_test,cl,k=4,prob = TRUE)
+
+confmat=table(c_test_lab,m)
+confmat
+
+accuracy_knn=sum(diag(confmat))/sum(confmat)*100
+accuracy_knn
+```
+
+
+## Classification using Naive Bayes
+```{r,echo=TRUE,warning=FALSE}
+library(e1071)
+library(caret)
+
+n_plm_train=plm_train[,-60]
+n_plm_test=plm_test[,-60]
+
+
+n_plm_train_labels=plm_train$classe
+n_plm_test_labels=plm_test$classe
+
+naive_classifier=naiveBayes(n_plm_train,n_plm_train_labels)
+class_predict=predict(naive_classifier,n_plm_test)
+xtab=table(class_predict,n_plm_test_labels)
+confusionMatrix(xtab)
+accuracy_naive=sum(diag(xtab))/sum(xtab)
+accuracy_naive
+```
+
+## Classification using SVM
+```{r,echo=TRUE,warning=FALSE}
+trctrl <- trainControl(method = "cv", number = 10)
+set.seed(3233)
+
+svm_Linear=train(classe ~., data = plm_train, method = "svmLinear",
+                 trControl=trctrl,
+                 tuneLength = 10)
+svm_predict=predict(svm_Linear,plm_test[-60])
+
+confusionMatrix(svm_predict,plm_test$classe)
+
+```
+
+
+## Classification using SVM(Radial Basis Function)
+
+```{r}
+library(e1071)
+library(caret)
+svm_model_nl=svm(classe~.,data =plm_train,kernel="radial")
+summary(svm_model_nl)
+s_predict_nl=predict(svm_model_nl,n_plm_test)
+confusionMatrix(s_predict_nl,n_plm_test_labels)
+
+```
+
+
+## Classification using SVM(Polynomial kernel)
+```{r}
+library(e1071)
+library(caret)
+svm_model_poly=svm(classe~.,data =plm_train,kernel="polynomial",gama=1)
+summary(svm_model_poly)
+s_predict_poly=predict(svm_model_poly,n_plm_test)
+confusionMatrix(s_predict_poly,n_plm_test_labels)
+```
+
+
+## Classification using SVM(Direct Method)
+```{r,echo=TRUE,warning=FALSE}
+library(e1071)
+svm_model=svm(classe~.,data =plm_train)
+summary(svm_model)
+s_predict=predict(svm_model,n_plm_test)
+confusionMatrix(s_predict,n_plm_test_labels)
+```
+
+## Classification using Gradient Boosting
+```{r}
+library(gbm)
+library(mlbench)
+gbm_model=gbm(classe~.,data = plm_train,distribution = "multinomial",cv.folds = 2,n.trees = 500,shrinkage = 0.1,verbose = F)
+boosting_iter=gbm.perf(gbm_model,method = "cv") ## To get the optimal boosting Iterations
+summary(gbm_model)
+gbm_predict=predict(gbm_model,n_plm_test,boosting_iter,type = "link")
+class_pred=apply(gbm_predict,1,which.max)
+class_pred=as.data.frame(class_pred)
+class_pred$class_pred=factor(class_pred$class_pred,label=c("A","B","C","D","E"),levels=c(1,2,3,4,5))
+confusionMatrix(class_pred$class_pred,n_plm_test_labels)
+
+```
+
+
+## CLUSTERING (k-means Clustering)
+
+
+
+## Plotting Elbow curve to find the value of the "k"
+```{r}
+
+
+clust_data= hist_data[,-54]
+wss=(nrow(clust_data)-1)*sum(apply(clust_data,2,var))
+  for (i in 2:15) wss[i] = sum(kmeans(clust_data, centers=i)$withinss)
+plot(1:15, wss, type="b", xlab="Number of Clusters",
+     ylab="Within groups sum of squares",
+     main="Finding  Number of Clusters with the Elbow Method",
+     pch=20, cex=2)
+
+```
+
+
+
+## Applying k-means algorithm 
+```{r}
+set.seed(234)
+km=kmeans(clust_data, 6, nstart=100)
+km$cluster
+```
+
+
+```{r}
+
+```
+
+

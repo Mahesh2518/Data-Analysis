@@ -1,0 +1,220 @@
+---
+title: "Time_Series"
+author: "TARAH.AI"
+date: "24 May 2018"
+output: html_document
+---
+
+```{r}
+library(forecast)
+library(dplyr)
+```
+
+
+
+```{r}
+turbo=read.csv("D:/T_Project/Proj_3_Sensor_data/sensor_data.csv",header =T)
+
+colnames(turbo)
+turbo_sen = subset(turbo,select= -c(1,4,5,6,28,29))
+colnames(turbo_sen)
+```
+
+
+
+### Plot to determine whether the series is stationary or non-stationary
+```{r}
+library(ggplot2)
+
+engine1=  turbo_sen %>% filter(engine==1)
+dim(engine1)
+
+
+names=colnames(engine1[,3:23])
+
+for (i in 3:23) {
+  
+  print(ggplot(engine1, aes(cycles,engine1[i])) + geom_line(color="royalblue") + ylab(colnames(engine1[i]))) 
+}
+
+```
+
+## Converting Series to Stationary and then forecasting values for next 5 cycles for first 3 Engines
+
+```{r}
+number=1
+while(number<=3){
+  
+  
+  turbofilter=turbo_sen%>%filter(engine==number)
+
+
+for(i in 3:23){
+  
+  model_forecast=auto.arima(log(turbofilter[,i]))
+  forecast_five=forecast(model_forecast,h=5)
+  forecast_values=2.718^forecast_five$mean
+  print(forecast_values)
+  plot(forecast_five,ylab=colnames(turbofilter[i]))
+  
+}
+  number=number+1
+}
+
+
+```
+
+
+### Transforming Non-Stationary to Stationary series and then forecasting values for Engine_2 
+```{r}
+turbofilter_1=turbo_sen%>%filter(engine==2)
+
+
+for(i in 3:17){
+  
+  model_forecast=auto.arima(log(turbofilter_1[,i]))
+  forecast_five=forecast(model_forecast,h=5)
+  forecast_value_2= 2.718^forecast_five$mean
+  print(forecast_values)
+  plot(forecast_five,ylab=colnames(turbofilter_1[i]))
+  
+}
+
+```
+
+
+
+
+### Transforming Non-Stationary to Stationary series and then forecasting values for Engine_3
+```{r}
+turbofilter_2=turbo_sen%>%filter(engine==3)
+
+
+for(i in 3:17){
+  
+  model_forecast=auto.arima(log(turbofilter_2[,i]))
+  forecast_five=forecast(model_forecast,h=5)
+  forecast_val= 2.718^forecast_five$mean
+  print(forecast_val)
+  plot(forecast_five,ylab=colnames(turbofilter_2[i]))
+  
+}
+
+```
+
+
+## UDF to forecast the sensor values for desired Engine
+
+```{r}
+
+TS_forecast=function(number){
+  
+  turbofilter=turbo_sen%>%filter(engine==number)
+
+
+for(i in 3:23){
+  
+  model_forecast=auto.arima(log(turbofilter[,i]))
+  forecast_five=forecast(model_forecast,h=5)
+  forecast_num= 2.718^forecast_five$mean
+  plot(forecast_five,ylab=colnames(turbofilter[i]))
+  
+}
+  
+}
+
+TS_forecast(1)
+
+```
+
+
+
+
+###################################################################################################################################### FORECASTING USING ARIMA ###########################################
+#####################################################################################################
+
+
+```{r}
+
+
+filter_sensor=turbo %>% filter(engine==1)
+
+turbo_s2=filter_sensor$sensor_2
+turbo_s2=ts(turbo_s2)
+plot(turbo_s2)
+plot.ts(turbo_s2)
+
+## Determing the values of "p" and "q"
+
+q_value= acf(diff(log(turbo_s2)))
+
+p_value=pacf(diff(log(turbo_s2)))
+
+
+model1=arima(log(turbo_s2),order = c(1,1,1))
+summary(model1) #-2347 AIC
+pred1 = forecast(model1,h=5)
+pred_1 = 2.718^pred1$mean
+pred_1
+plot(pred1)
+
+model2=arima(log(turbo_s2),order = c(0,1,1))
+summary(model2) # -2348 AIC
+pred2 = forecast(model2,h=5)
+pred_2 = 2.718^pred2$mean
+pred_2
+plot(pred2)
+
+model3=arima(log(turbo_s2),order = c(0,1,0))
+summary(model3) # -2244 AIC
+pred3 = forecast(model3,h=5)
+pred_3 = 2.718^pred3$mean
+pred_3
+plot(pred3)
+
+model4=arima(log(turbo_s2),order=c(1,1,0))
+summary(model4) # -2305 AIC
+pred4 = forecast(model4,h=5)
+pred_4 = 2.718^pred4$mean
+pred_4
+plot(pred4)
+```
+
+
+## Comparision between ARIMA and Auto ARIMA
+
+
+```{r}
+## Using Auto ARIMA
+
+auto_arima = auto.arima(log(turbo_s2))
+summary(auto_arima)
+
+auto_pred = forecast(auto_arima,h=5)
+pred_auto = 2.718^auto_pred$mean
+pred_auto
+
+plot(auto_pred)
+
+
+## Using ARIMA
+model1=arima(log(turbo_s2),order = c(1,1,1))
+summary(model1) #-2347 AIC
+pred1 = forecast(model1,h=5)
+pred_1 = 2.718^pred1$mean
+pred_1
+plot(pred1)
+
+
+## By comparing two models, Auto ARIMA gives the best forecasting values.
+```
+
+
+
+
+
+
+
+
+
+

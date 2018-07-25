@@ -1,0 +1,300 @@
+---
+title: "Cylinder_Bands_Analysis"
+author: "TARAH.AI"
+date: "18 May 2018"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Importing required libraries
+
+```{r,warning=FALSE}
+library(mice)
+library(ggplot2)
+library(rpart)
+library(caret)
+```
+
+
+## Importing data and replacing "?" with NA values
+```{r,warning=FALSE}
+cb_data=read.csv("D:/T_Project/Cylinder Bands/phpAz9Len.csv",na.strings =c("?","") )
+str(cb_data)
+```
+
+## Checking % of NA Vaalues for each column
+```{r,warning=FALSE}
+length= nrow(cb_data)
+percentage_nulls=colSums((is.na(cb_data))/length)*100
+percentage_nulls
+```
+
+## Replacing "NA" Values 
+```{r,warning=FALSE}
+
+categorical=c(5,7,8,12,13,14,18,19,20,40)
+numerical=c(21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39)
+
+
+for(i in numerical){
+    cb_data[,i][is.na(cb_data[,i])]=mean(cb_data[,i],na.rm=TRUE)
+}
+
+Most_freq=function(x) {
+  ux=unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+for(i in categorical){
+    cb_data[,i][is.na(cb_data[,i])]=Most_freq(cb_data[,i])
+}
+
+```
+
+## Statistical Info about the data
+
+```{r,warning=FALSE}
+library(xda)
+
+charSummary(cb_data)
+
+numSummary(cb_data)
+
+```
+
+
+
+## Partitioning of data for training and testing 
+```{r,warning=FALSE}
+set.seed(234)
+sample_cb_data= sample.int(n=nrow(cb_data),size = floor(0.7*nrow(cb_data)),replace = F)
+cb_train=cb_data[sample_cb_data,]
+cb_test=cb_data[-sample_cb_data,]
+
+```
+
+## Classification Using RPART
+```{r,warning=FALSE}
+library(rpart)
+cb_model=rpart(band_type~.,data = cb_train,method="class")
+
+## Plotting Tree using Rattle and rpart.plot packages
+library(rattle)
+fancyRpartPlot(cb_model) ## using rattle
+library(rpart.plot)
+prp(cb_model,box.palette = "Red",tweak = 1.0) ## using rpart.plot
+
+
+## Identifying the Complexity Parameter (CP) value
+printcp(cb_model)
+
+## Pruning tree based on CP value
+cb_prune=prune(cb_model,cp=0.01)
+fancyRpartPlot(cb_prune)
+
+## Prediction on Test Data
+pred_cb=predict(cb_prune,cb_test[-40],type = 'class')
+model_pred_cb=table(pred_cb,cb_test$band_type)
+
+## Calculating Accuracy
+accuracy=(sum(diag(model_pred_cb))/sum(model_pred_cb))*100
+accuracy
+
+```
+
+## Classification using K-fold Cross Validation with method as "RPART"
+```{r,warning=FALSE}
+library(caret)
+
+## Modifying the train dataset by removing catergorical columns with one level
+k_cb_train=cb_train[,-c(6,9)]
+
+## Defining train control parameters
+train_control_cb= trainControl(method="cv", number=10)
+
+## training the model with the pre-defined control parameters
+cb_kfcv_model=train(band_type~.,data = k_cb_train,trControl=train_control_cb,method="rpart",cp=0.0675)
+
+## Finding the CP value 
+print(cb_kfcv_model)
+
+## Plotting Tree
+
+prp(cb_kfcv_model$finalModel)
+
+## Predictions on test data
+pre_cb=predict(cb_kfcv_model,cb_test[,-c(6,9,40)])
+c_tab=table(pre_cb,cb_test$band_type)
+
+## Accuracy
+accuracy_kfcv=(sum(diag(c_tab))/sum(c_tab))*100
+accuracy_kfcv
+```
+
+
+## Classification using  Decision Tree
+```{r,warning=FALSE}
+
+library(party)
+
+dt_train=cb_train[,-c(6,9)]
+model_dt=ctree(band_type~., data = dt_train)
+plot(model_dt)
+
+
+## Predictions on test data
+
+dt_pred=predict(model_dt,cb_test[-c(6,9,40)],type="response")
+dt_tab=table(dt_pred,cb_test$band_type)
+
+
+## Accuracy
+accuracy_dt=(sum(diag(dt_tab))/sum(dt_tab))*100
+accuracy_dt
+```
+
+############################################################################################################################################### Replacing Outlier's with  Median #####################################
+###########################################################################################################
+
+
+
+## Replacing Outliers with Median
+
+```{r}
+
+## Selecting numerical columns
+num_col=c(21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39)
+
+## Subsetting data with numerical columns
+data_f =cb_data[,num_col]
+
+## Checking for outlier count for each column
+numSummary(data_f)
+
+## function to replace outliers with  median
+calcul.mad =function(x) {
+mad =median(abs(x-median(x, na.rm=TRUE))) 
+mad}
+
+uper.interval=function(x,y) {
+up.inter=median(x, na.rm=TRUE)+2*(y) 
+up.inter}
+
+lower.interval=function(x,y) {
+low.inter=median(x, na.rm=TRUE)-2*(y)
+low.inter}
+
+functionData=function(x,h,l) {
+out <- ifelse(x > h, h, ifelse(x < l, l, x))
+out}
+
+
+outlier.fun=function(column1) {
+  med_data=median(column1, na.rm=TRUE)
+  cal_mad=calcul.mad(column1)
+  up_data=uper.interval(med_data, cal_mad)
+  low_data =lower.interval(med_data, cal_mad)
+  column_without_outliers=functionData(column1, up_data, low_data)
+
+  return(column_without_outliers)
+  }
+
+## Applying function on our data to replace outliers
+data_f_noout <- apply(data_f,2 , outlier.fun)
+data_f_noout=as.data.frame(data_f_noout)
+
+## Checking for outlier count
+numSummary(data_f_noout)
+
+```
+
+## Merging numerical and catergorical columns to create a final data frame
+```{r}
+final_data=cbind(cb_data[,-num_col],data_f_noout)
+dim(final_data)
+
+```
+
+
+## Dropping Sparse Columns(Colums with most f their entries as "Zero")
+```{r}
+numSummary(final_data)
+final_data=final_data[,-c(33,34)]
+dim(final_data)
+```
+
+
+## Partitioning of data for training and testing 
+```{r,warning=FALSE}
+set.seed(270)
+sample_cb= sample.int(n=nrow(final_data),size = floor(0.7*nrow(final_data)),replace = F)
+train=final_data[sample_cb,]
+test=final_data[-sample_cb,]
+```
+
+
+## Classification using RPART for outlier free data
+```{r}
+library(rpart)
+rpart_model=rpart(band_type~.,data = train,method="class")
+
+## Plotting Tree using Rattle and rpart.plot packages
+library(rattle)
+fancyRpartPlot(rpart_model) ## using rattle
+
+## Identifying the Complexity Parameter (CP) value
+printcp(cb_model)
+
+## Pruning tree based on CP value
+rpart_prune=prune(rpart_model,cp=0.01)
+fancyRpartPlot(cb_prune)
+View(test)
+
+## Prediction on Test Data
+pred_rpart=predict(rpart_prune,test[-21],type = 'class')
+model_pred_rpart=table(pred_rpart,test$band_type)
+
+## Calculating Accuracy
+accuracy_no_rpart=(sum(diag(model_pred_rpart))/sum(model_pred_rpart))*100
+accuracy_no_rpart
+```
+
+
+## Classification using K-fold Cross Validation with method as "RPART" for outlier free data
+```{r,warning=FALSE}
+library(caret)
+
+
+## Modifying the train dataset by removing catergorical columns with one level
+no_train=train[,-c(6,9)]
+
+## Defining train control parameters
+train_control_no= trainControl(method="cv", number=10)
+
+## training the model with the pre-defined control parameters
+kfcv_model=train(band_type~.,data = no_train,trControl=train_control_no,method="rpart",cp=0.0286)
+
+## Finding the CP value 
+print(kfcv_model)
+
+## Plotting Tree
+
+prp(kfcv_model$finalModel)
+
+## Predictions on test data
+pre_no_kfcv=predict(kfcv_model,test[,-c(6,9,21)])
+kfcv_tab=table(pre_no_kfcv,test$band_type)
+
+
+## Accuracy
+no_accuracy_kfcv=(sum(diag(kfcv_tab))/sum(kfcv_tab))*100
+print(no_accuracy_kfcv)
+```
+
+
